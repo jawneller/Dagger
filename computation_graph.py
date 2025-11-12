@@ -2,24 +2,27 @@ import networkx as nx
 import matplotlib.pyplot as plt
 import inspect
 import warnings
+from typing import Type
 
-class ComputationGraph:
+class GraphFactory:
 
-    def __init__(self, formula_source):
+    def __init__(self):
         # calculation_params = 1
         self.G = nx.DiGraph()
-        self.formula_source = formula_source
-        self.formulas = formula_source()
-        self._method_map = self._create_method_map()
+        # self.formula_source = formula_source
+        # self.formulas = formula_source()
+        # self._method_map = self._create_method_map()
 
-    def _create_method_map(self) -> dict:
+    def _create_method_map(self, formula_source) -> dict:
+
+        formulas = formula_source()
 
         # Collect all methods in the formaulas class that don't start with an underscore
         # By convention, these will be our 'formulas'
-        all_members = dir(self.formulas)
+        all_members = dir(formulas)
         public_methods = [
             member for member in all_members
-            if callable(getattr(self.formulas, member)) and not member.startswith('_')
+            if callable(getattr(formulas, member)) and not member.startswith('_')
         ]
 
         # --- Crate mapping dictionary with keys as method name and values as a list of parameters --- #
@@ -27,7 +30,7 @@ class ComputationGraph:
         for method_name in public_methods:
 
             # --- get method object and parameters --- #
-            method_obj = getattr(self.formula_source, method_name)
+            method_obj = getattr(formula_source, method_name)
             params = inspect.signature(method_obj).parameters.items()
 
             # --- method_obj, params = self._get_method_obj_w_parameters(method_name) --- #
@@ -37,7 +40,15 @@ class ComputationGraph:
 
         return method_parameter_mapping
 
-    def create_graph(self) -> None:
+    def build_graph_from_code(self, formula_source: Type) -> None:
+        self._method_map = self._create_method_map(formula_source)
+
+        self._create_graph()
+        self._classify_nodes()
+
+        return None
+
+    def _create_graph(self) -> None:
 
         # Add nodes - one per method and parameter
         for method_name in self._method_map.keys():
@@ -57,16 +68,45 @@ class ComputationGraph:
 
         return None
 
-    def get_required_inputs(self) -> list:
+    def _classify_nodes(self) -> None:
+        """
+        Update self.G node attributes so each is assigned a 'role' as either an input, calculation or output
+        """
+
+        for node in self.G.nodes:
+            
+            if self.G.in_degree(node) == 0:
+                role = "input"
+            elif (self.G.in_degree(node) > 0) and (self.G.out_degree(node) > 0):
+                role = "calculation"
+            elif self.G.out_degree(node) == 0:
+                role = "output"
+            else:
+                role = None
+                warnings.warn(f"No role assigned to node {node}. Something is wrong!")
+
+            self.G.nodes[node]["role"] = role
+
+        return None
+
+    def get_nodes_by_role(self, role) -> list:
         """Output a list of nodes that are roots of the tree and thus require inputs"""
 
-        return [node for node, degree in self.G.in_degree() if degree == 0]
+        return [node for node in self.G.nodes if self.G.nodes[node]["role"] == role]
 
-    def run_graph(self, inputs) -> None:
+class GraphRunner:
+
+    """Apply inputs to GraphFactory to initialize it, run, query outputs"""
+
+    def __init__(self, gf:GraphFactory, inputs):
+        self.G = gf.G
+        self.inputs = inputs
+
+    def run(self) -> None:
 
         # --- Create dictionary of dictionaries to set node attributes --- #
         dod = {}
-        for k, v in inputs.items():
+        for k, v in self.inputs.items():
             dod[k] = dict()
             dod[k]["value"] = v
             if k not in self.G.nodes:
@@ -82,9 +122,8 @@ class ComputationGraph:
             func = self.G.nodes[node].get("func")
             if func:
                 argmap = self.G.nodes[node]["args"]
-                inputs = {arg: self.G.nodes[arg]["value"] for arg in argmap}
-                # print("inputs: ", inputs)
-                self.G.nodes[node]["value"] = func(**inputs)
+                func_inputs = {arg: self.G.nodes[arg]["value"] for arg in argmap}
+                self.G.nodes[node]["value"] = func(**func_inputs)
 
         return None
 
@@ -99,5 +138,16 @@ class ComputationGraph:
 
 def visualize_graph(G):
     pos = nx.planar_layout(G)
-    nx.draw(G, pos, with_labels=True)
+    
+    # Define color mapping for roles
+    role_colors = {
+        "input": "#90EE90",      # Light green
+        "calculation": "#87CEEB", # Sky blue
+        "output": "#FFB6C6"       # Light pink
+    }
+    
+    # Get node colors based on their role attribute
+    node_colors = [role_colors.get(G.nodes[node].get("role"), "#CCCCCC") for node in G.nodes()]
+    
+    nx.draw(G, pos, with_labels=True, node_color=node_colors, node_size=1500, font_size=10, font_weight="bold")
     plt.show()
