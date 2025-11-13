@@ -136,18 +136,3 @@ class GraphRunner:
         
         return dict(G.data("value"))
 
-def visualize_graph(G):
-    pos = nx.planar_layout(G)
-    
-    # Define color mapping for roles
-    role_colors = {
-        "input": "#90EE90",      # Light green
-        "calculation": "#87CEEB", # Sky blue
-        "output": "#FFB6C6"       # Light pink
-    }
-    
-    # Get node colors based on their role attribute
-    node_colors = [role_colors.get(G.nodes[node].get("role"), "#CCCCCC") for node in G.nodes()]
-    
-    nx.draw(G, pos, with_labels=True, node_color=node_colors, node_size=1500, font_size=10, font_weight="bold")
-    plt.show()
