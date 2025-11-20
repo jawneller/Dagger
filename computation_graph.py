@@ -1,17 +1,77 @@
 import networkx as nx
 import matplotlib.pyplot as plt
+import formulas
+
 import inspect
 import warnings
 from typing import Type
 
 class GraphFactory:
+    def __init__(self):
+        self.G = nx.DiGraph()
+
+    def _classify_nodes(self) -> None:
+        """
+        Update self.G node attributes so each is assigned a 'role' as either an input, calculation or output
+        """
+
+        for node in self.G.nodes:
+            
+            if self.G.in_degree(node) == 0:
+                role = "input"
+            elif (self.G.in_degree(node) > 0) and (self.G.out_degree(node) > 0):
+                role = "calculation"
+            elif self.G.out_degree(node) == 0:
+                role = "output"
+            else:
+                role = None
+                warnings.warn(f"No role assigned to node {node}. Something is wrong!")
+
+            self.G.nodes[node]["role"] = role
+
+        return None
+
+    def get_nodes_by_role(self, role) -> list:
+        """Output a list of nodes that are roots of the tree and thus require inputs"""
+
+        return [node for node in self.G.nodes if self.G.nodes[node]["role"] == role]
+
+
+class GraphFactoryExcel(GraphFactory):
 
     def __init__(self):
-        # calculation_params = 1
-        self.G = nx.DiGraph()
-        # self.formula_source = formula_source
-        # self.formulas = formula_source()
-        # self._method_map = self._create_method_map()
+        super().__init__()
+        self.path_to_excel = None
+
+    def build_dag_from_excel(self, fpath) -> None:
+
+        xl = formulas.ExcelModel().loads(fpath).finish()
+        xl_dict = xl.to_dict()
+
+        parser = formulas.Parser()
+
+        G = nx.DiGraph()
+
+        for cell_addr, raw_value in xl_dict.items():
+
+            self.G.add_node(cell_addr)
+
+            if isinstance(raw_value, str) and raw_value.startswith("="):
+
+                func = parser.ast(raw_value)[1].compile()
+
+                for upstream in func.inputs:
+                    self.G.add_edge(upstream, cell_addr)
+
+        self._classify_nodes()
+
+        return None
+
+class GraphFactoryPython(GraphFactory):
+
+    def __init__(self):
+        super().__init__()
+        self._method_map = None
 
     def _create_method_map(self, formula_source) -> dict:
 
@@ -67,32 +127,6 @@ class GraphFactory:
                 self.G.add_edge(param, method_name)
 
         return None
-
-    def _classify_nodes(self) -> None:
-        """
-        Update self.G node attributes so each is assigned a 'role' as either an input, calculation or output
-        """
-
-        for node in self.G.nodes:
-            
-            if self.G.in_degree(node) == 0:
-                role = "input"
-            elif (self.G.in_degree(node) > 0) and (self.G.out_degree(node) > 0):
-                role = "calculation"
-            elif self.G.out_degree(node) == 0:
-                role = "output"
-            else:
-                role = None
-                warnings.warn(f"No role assigned to node {node}. Something is wrong!")
-
-            self.G.nodes[node]["role"] = role
-
-        return None
-
-    def get_nodes_by_role(self, role) -> list:
-        """Output a list of nodes that are roots of the tree and thus require inputs"""
-
-        return [node for node in self.G.nodes if self.G.nodes[node]["role"] == role]
 
 class GraphRunner:
 
