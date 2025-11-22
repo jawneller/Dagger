@@ -16,7 +16,7 @@ class GraphFactory:
         """
 
         for node in self.G.nodes:
-            
+    
             if self.G.in_degree(node) == 0:
                 role = "input"
             elif (self.G.in_degree(node) > 0) and (self.G.out_degree(node) > 0):
@@ -31,11 +31,20 @@ class GraphFactory:
 
         return None
 
+    def remove_island_nodes(self) -> None:
+        """Delete nodes from the graph that are islands (no edges to other nodes)"""
+        island_nodes = []
+        
+        for node in self.G.nodes:
+            if (self.G.in_degree(node) == 0) and (self.G.out_degree(node) == 0):
+                island_nodes.append(node)
+                
+        self.G.remove_nodes_from(island_nodes)
+
     def get_nodes_by_role(self, role) -> list:
         """Output a list of nodes that are roots of the tree and thus require inputs"""
 
         return [node for node in self.G.nodes if self.G.nodes[node]["role"] == role]
-
 
 class GraphFactoryExcel(GraphFactory):
 
@@ -43,7 +52,9 @@ class GraphFactoryExcel(GraphFactory):
         super().__init__()
         self.path_to_excel = None
 
-    def build_dag_from_excel(self, fpath) -> None:
+    def build_dag_from_excel(
+        self, fpath: str, relabel_mapping: dict=None
+    ) -> None:
 
         xl = formulas.ExcelModel().loads(fpath).finish()
         xl_dict = xl.to_dict()
@@ -63,9 +74,10 @@ class GraphFactoryExcel(GraphFactory):
                 for upstream in func.inputs:
                     self.G.add_edge(upstream, cell_addr)
 
-        self._classify_nodes()
+        # Convert node names from range to variable name
+        nx.relabel_nodes(self.G, relabel_mapping, copy=False)
 
-        return None
+        self._classify_nodes()
 
 class GraphFactoryPython(GraphFactory):
 
