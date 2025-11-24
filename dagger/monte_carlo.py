@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from computation_graph import GraphRunner
+from .computation_graph import GraphRunner
 
 class MonteCarlo:
 
